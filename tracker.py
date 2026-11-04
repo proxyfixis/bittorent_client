@@ -7,7 +7,7 @@ import random
 import string
 import struct
 
-from bencode import decode  , get_info_hash  # adjust to your actual bencode filename
+from bencode import decode  # adjust to your actual bencode filename
 
 
 

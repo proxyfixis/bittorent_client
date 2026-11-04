@@ -87,13 +87,14 @@ def get_info_hash(data):
     info_hash = hashlib.sha1(data[info_start:info_end]).digest()
     return info_dict, info_hash
 
-## testing , remove later    
-torrent = parse_torrent('ubuntu.torrent')
-print('Name:', torrent['name'])
-print('Announce:', torrent['announce'])
-print('Piece length:', torrent['piece_length'])
-print('Number of pieces:', len(torrent['pieces']) // 20)
-print('Length:', torrent['length'])
+if __name__ == '__main__':
+    ## testing , remove later    
+    torrent = parse_torrent('ubuntu.torrent')
+    print('Name:', torrent['name'])
+    print('Announce:', torrent['announce'])
+    print('Piece length:', torrent['piece_length'])
+    print('Number of pieces:', len(torrent['pieces']) // 20)
+    print('Length:', torrent['length'])
 
 
 
