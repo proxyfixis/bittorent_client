@@ -47,6 +47,9 @@ def decode(data,start) :
     elif data[start:start+1] == b'd':
         return decode_dict(data, start)
 
+    else:
+        raise ValueError(f"bad bencode byte {data[start:start+1]!r} at position {start}")
+
 ## put the above decode function to use on a torrent
 def decode_torrent(filepath):
     with open(filepath, 'rb') as f:
@@ -63,6 +66,9 @@ def parse_torrent(filepath):
     decoded , _ = decode_torrent(filepath)
     info = decoded[b'info']
 
+    if b'files' in info:
+        raise NotImplementedError("multi-file torrents are not supported yet")
+
     name = info[b'name']
     piece_length = info[b'piece length']
     pieces = info[b'pieces']  # raw bytes, every 20 bytes = one SHA1 hash
@@ -77,14 +83,22 @@ def parse_torrent(filepath):
         'length': length
     }
 
+def find_info_range(data):
+    pos = 1  # skip the opening 'd' of the top-level dict
+    while data[pos:pos+1] != b'e':
+        key, pos = decode(data, pos)
+        value_start = pos
+        value, pos = decode(data, pos)
+        if key == b'info':
+            return value_start, pos
+    raise ValueError("no info dict found in torrent")
+
 def get_info_hash(data):
 
      # FIND THE INFO HASH - Needs getting the beginning and ending index from and slicing that part alone - then hash
-       
-    info_start = data.index(b'4:info') + len(b'4:info')
-    info_dict, info_end = decode(data, info_start)
-
-    info_hash = hashlib.sha1(data[info_start:info_end]).digest()
+    start, end = find_info_range(data)
+    info_dict, _ = decode(data, start)
+    info_hash = hashlib.sha1(data[start:end]).digest()
     return info_dict, info_hash
 
 if __name__ == '__main__':

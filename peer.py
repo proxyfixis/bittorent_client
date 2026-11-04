@@ -16,13 +16,13 @@ BLOCK_SIZE = 16384
 
 ## ensuring we recieve the required number of bytes - handshake is 68 bytes exactly
 def recv_exact(sock , n) :
-        buffer = b''
-        while(len(buffer) < n) :
-                chunk = sock.recv(n-len(buffer))
-                if not chunk:
-                    raise ConnectionError("Peer closed connection")
-                buffer += chunk
-        return buffer
+    buffer = b''
+    while(len(buffer) < n) :
+        chunk = sock.recv(n-len(buffer))
+        if not chunk:
+            raise ConnectionError("Peer closed connection")
+        buffer += chunk
+    return buffer
 
 ## handshake with peer
 
@@ -47,34 +47,34 @@ def do_handshake(ip , port , info_hash , peer_id) :
             raise RuntimeError("Info hash doesn't match")
         
     except Exception:
-         sock.close()
-         raise
+        sock.close()
+        raise
     
 
     return sock
 
 ## reading a length prefixed message
 def recv_message(sock) :
-     length_bytes = recv_exact(sock , 4)
-     length = int.from_bytes(length_bytes, byteorder='big')
+    length_bytes = recv_exact(sock , 4)
+    length = int.from_bytes(length_bytes, byteorder='big')
 
-     if length == 0 :
+    if length == 0 :
         return None , None
 
-     message = recv_exact(sock , length)
-     message_id = message[0]
-     payload = message[1:]
-     return message_id , payload
+    message = recv_exact(sock , length)
+    message_id = message[0]
+    payload = message[1:]
+    return message_id , payload
 
 ## sending message to the server - needs message_id to determine type and payload to send
 def send_message(sock , message_id , payload = b'') : 
-     length = 1 + len(payload) 
-     message = length.to_bytes(4, byteorder="big") + bytes([message_id]) + payload 
-     sock.sendall(message)
+    length = 1 + len(payload)
+    message = length.to_bytes(4, byteorder="big") + bytes([message_id]) + payload
+    sock.sendall(message)
 
 ## request a specific piece of the file
 def request_piece(sock , piece_index , begin , length) : 
-     payload = piece_index.to_bytes(4 , byteorder = "big") + begin.to_bytes(4 , byteorder = "big") + length.to_bytes(4 , byteorder = "big")
-     send_message(sock ,REQUEST ,payload)
+    payload = piece_index.to_bytes(4 , byteorder = "big") + begin.to_bytes(4 , byteorder = "big") + length.to_bytes(4 , byteorder = "big")
+    send_message(sock ,REQUEST ,payload)
      
 

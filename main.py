@@ -18,7 +18,10 @@ info , info_hash = get_info_hash(data)
 
 peer_id = generate_peer_id()
 
-left = info.get(b'length', 0)
+if b'files' in info:
+    raise NotImplementedError("multi-file torrents are not supported yet")
+left = info[b'length']
+
 
 encoded_response = tracker_get(announce_url, info_hash, peer_id, 6881 , left) ## port no is standard convention for bittorent
 
@@ -37,54 +40,57 @@ for ip , port in peers :
     try :
         sock = do_handshake(ip , port , info_hash , peer_id)
         print(f"handshake succeeded with {ip}:{port}")
-        message_id , payload  = recv_message(sock)
 
-        if(message_id == None) : 
-            print("Recieved a keep alive")
-        elif(message_id == peer.BITFIELD) :
-            print(f"Message ID :{message_id}  Payload : {payload}" )
-            bitfield = payload
-        else : 
-            print("not bitfield , handle later on")
+        ## with sock so socket cleanup is automatic
+        with sock : 
+            message_id , payload  = recv_message(sock)
 
-
-        send_message(sock , peer.INTERESTED)
-
-        ## waits till unchoked
-        while True : 
-            message_id , payload = recv_message(sock)
-
-            if message_id == peer.UNCHOKE : 
-                  print("Unchoke recieved , ready to request pieces")
-                  break
-            elif message_id is None :
-                  continue
-            else :
-                  print(f"waiting for unchoke, got message id {message_id}") 
-
-        
-
-        peer.request_piece(sock , 0 , 0, peer.BLOCK_SIZE)
+            if(message_id == None) : 
+                print("Recieved a keep alive")
+            elif(message_id == peer.BITFIELD) :
+                print(f"Message ID :{message_id}  Payload : {payload}" )
+                bitfield = payload
+            else : 
+                print("not bitfield , handle later on")
 
 
-        ## waits till piece arrives 
-        while True : 
-             
-            message_id , response = recv_message(sock) 
+            send_message(sock , peer.INTERESTED)
 
-            if message_id == peer.PIECE : 
-                break
+            ## waits till unchoked
+            while True : 
+                message_id , payload = recv_message(sock)
+
+                if message_id == peer.UNCHOKE : 
+                    print("Unchoke recieved , ready to request pieces")
+                    break
+                elif message_id is None :
+                    continue
+                else :
+                    print(f"waiting for unchoke, got message id {message_id}") 
+
+            
+
+            peer.request_piece(sock , 0 , 0, peer.BLOCK_SIZE)
+
+
+            ## waits till piece arrives 
+            while True : 
                 
-            elif message_id == peer.CHOKE : 
-                print(f"Recieved message : {message_id}")
+                message_id , response = recv_message(sock) 
 
-        index = int.from_bytes(response[0:4] , byteorder = "big")
-        begin = int.from_bytes(response[4:8] , byteorder= "big")
-        piece = response[8:]
+                if message_id == peer.PIECE : 
+                    break
+                    
+                elif message_id == peer.CHOKE : 
+                    print(f"Recieved message : {message_id}")
 
-        print(f"got block: piece {index}, offset {begin}, {len(piece)} bytes")
-        break
-    
+            index = int.from_bytes(response[0:4] , byteorder = "big")
+            begin = int.from_bytes(response[4:8] , byteorder= "big")
+            piece = response[8:]
+
+            print(f"got block: piece {index}, offset {begin}, {len(piece)} bytes")
+            break
+
     except Exception as e:
           print(f"peer {ip}:{port} failed: {e}")
 
