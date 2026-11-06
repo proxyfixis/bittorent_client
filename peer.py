@@ -72,6 +72,18 @@ def send_message(sock , message_id , payload = b'') :
     message = length.to_bytes(4, byteorder="big") + bytes([message_id]) + payload
     sock.sendall(message)
 
+def wait_for_unchoke(sock) : 
+    while True :    
+        message_id , _ = recv_message(sock)
+
+        if message_id == UNCHOKE : 
+            print("Unchoke recieved , ready to request pieces")
+            return
+        elif message_id is None :
+            continue
+        else :
+            print(f"waiting for unchoke, got message id {message_id}") 
+
 ## request a specific piece of the file
 def request_piece(sock , piece_index , begin , length) : 
     payload = piece_index.to_bytes(4 , byteorder = "big") + begin.to_bytes(4 , byteorder = "big") + length.to_bytes(4 , byteorder = "big")
