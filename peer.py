@@ -84,8 +84,30 @@ def wait_for_unchoke(sock) :
         else :
             print(f"waiting for unchoke, got message id {message_id}") 
 
-## request a specific piece of the file
-def request_piece(sock , piece_index , begin , length) : 
+def download_block(sock ,index , begin , length) : 
+
+    request_block(sock , index , begin , length)
+
+    ## waits till piece arrives 
+    while True : 
+        message_id , response = recv_message(sock) 
+
+        if message_id == PIECE : 
+            break
+            
+        elif message_id == CHOKE : 
+            print(f"Recieved message : {message_id}")
+
+    resp_index = int.from_bytes(response[0:4] , byteorder = "big")
+    resp_begin = int.from_bytes(response[4:8] , byteorder= "big")
+    resp_block = response[8:]
+
+    print(f"got block: piece {resp_index}, offset {resp_begin}, {len(resp_block)} bytes")
+    return resp_block
+    
+
+## request a specific block of the file
+def request_block(sock , piece_index , begin , length) : 
     payload = piece_index.to_bytes(4 , byteorder = "big") + begin.to_bytes(4 , byteorder = "big") + length.to_bytes(4 , byteorder = "big")
     send_message(sock ,REQUEST ,payload)
      

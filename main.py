@@ -57,27 +57,11 @@ for ip , port in peers :
 
             
             ## requesting first block of first piece
-            peer.request_piece(sock , 0 , 0, peer.BLOCK_SIZE)
+            block = peer.download_block(sock , 0 , 0 , peer.BLOCK_SIZE)
+            print(len(block))
 
 
-            ## waits till piece arrives 
-            while True : 
-                
-                message_id , response = peer.recv_message(sock) 
-
-                if message_id == peer.PIECE : 
-                    break
-                    
-                elif message_id == peer.CHOKE : 
-                    print(f"Recieved message : {message_id}")
-
-            index = int.from_bytes(response[0:4] , byteorder = "big")
-            begin = int.from_bytes(response[4:8] , byteorder= "big")
-            piece = response[8:]
-
-            print(f"got block: piece {index}, offset {begin}, {len(piece)} bytes")
-            break
-
+           
     except Exception as e:
           print(f"peer {ip}:{port} failed: {e}")
 
