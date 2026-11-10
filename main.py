@@ -1,4 +1,5 @@
-import peer , bencode , tracker
+import peer , bencode , tracker , pieces
+import traceback
 
 filepath = 'ubuntu.torrent'
 
@@ -17,6 +18,8 @@ peer_id =tracker.generate_peer_id()
 if b'files' in info:
     raise NotImplementedError("multi-file torrents are not supported yet")
 left = info[b'length']
+piece_length = info[b'piece length']
+pieces_hash = info[b'pieces']
 
 
 encoded_response = tracker.tracker_get(announce_url, info_hash, peer_id, 6881 , left) ## port no is standard convention for bittorent
@@ -34,36 +37,42 @@ peers = tracker.parse_peers(decoded_response[b'peers'])
 ## connects to peers in swarms and requests peices 
 for ip , port in peers :
     try :
+        print(f"connecting to {ip}:{port}")
         sock = peer.do_handshake(ip , port , info_hash , peer_id)
         print(f"handshake succeeded with {ip}:{port}")
 
         ## with sock so socket cleanup is automatic
+        print("waiting for first message")
         with sock : 
             message_id , payload  = peer.recv_message(sock)
 
             if(message_id == None) : 
                 print("Recieved a keep alive")
             elif(message_id == peer.BITFIELD) :
-                print(f"Message ID :{message_id}  Payload : {payload}" )
+                print(f"Message ID :{message_id}  Payload length : {len(payload)}" )
                 bitfield = payload
             else : 
                 print("not bitfield , handle later on")
 
+            print("sending INTERESTED")
             ## send interested
             peer.send_message(sock , peer.INTERESTED)
 
+            print("waiting for unchoke")
             ## waits till unchoked
             peer.wait_for_unchoke(sock)
 
-            
-            ## requesting first block of first piece
-            block = peer.download_block(sock , 0 , 0 , peer.BLOCK_SIZE)
-            print(len(block))
+            print("downloading piece 0")
+            ## requesting first piece to test
+            test_piece = peer.download_piece(sock, 0, piece_length)
+            print(len(test_piece))
 
+            piece_is_correct = pieces.check_piece_hash(test_piece , 0 , pieces_hash)
+            print(f"Piece x hash : {piece_is_correct}")
 
-           
     except Exception as e:
           print(f"peer {ip}:{port} failed: {e}")
+          traceback.print_exc()
 
 
 

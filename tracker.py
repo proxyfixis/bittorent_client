@@ -1,6 +1,4 @@
 ## Talks to the tracker server to get information on peers
-
-
 import requests
 import urllib.parse
 import random

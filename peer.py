@@ -72,6 +72,7 @@ def send_message(sock , message_id , payload = b'') :
     message = length.to_bytes(4, byteorder="big") + bytes([message_id]) + payload
     sock.sendall(message)
 
+## peers might choke you for wtv reason , when choked run this to keep waiting for the unchoke
 def wait_for_unchoke(sock) : 
     while True :    
         message_id , _ = recv_message(sock)
@@ -84,8 +85,10 @@ def wait_for_unchoke(sock) :
         else :
             print(f"waiting for unchoke, got message id {message_id}") 
 
+## downlaods a block - loop over all blocks in download_piece
 def download_block(sock ,index , begin , length) : 
 
+    print(f"requesting block begin={begin}")
     request_block(sock , index , begin , length)
 
     ## waits till piece arrives 
@@ -104,7 +107,17 @@ def download_block(sock ,index , begin , length) :
 
     print(f"got block: piece {resp_index}, offset {resp_begin}, {len(resp_block)} bytes")
     return resp_block
-    
+
+## downloads a piece block by block - loop over in main to download all pieces
+def download_piece(sock, piece_index , length) : 
+    buf = bytearray(length)
+
+    for begin in range(0 , length , BLOCK_SIZE) : 
+        bytes_left = length - begin 
+        block_len = min(bytes_left , BLOCK_SIZE)
+        buf[begin : begin + block_len] = download_block(sock , piece_index , begin , block_len)
+
+    return buf
 
 ## request a specific block of the file
 def request_block(sock , piece_index , begin , length) : 
