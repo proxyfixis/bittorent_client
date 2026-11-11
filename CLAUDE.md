@@ -4,41 +4,55 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-This is a from-scratch BitTorrent client written in Python, currently in early development. There is no build system, package manager config, test framework, or linter set up yet — just a few modules with bottom-of-file smoke tests (`if __name__ == '__main__':` blocks or bare top-level calls) that run against `ubuntu.torrent`, a real torrent file checked into the repo for manual testing.
+A from-scratch BitTorrent client in Python, built as a learning project. It can announce to a tracker, handshake with a peer, download one piece block by block, verify its SHA1 against the torrent, and write it to disk at the right offset. It does **not** yet download a whole file: `main.py` only fetches piece 0 (hardcoded) and stops after the first verified piece.
 
-`bittorent/` is a Python 3.14 virtualenv (created via `python3.14 -m venv bittorent`), not source code — ignore it when reading/searching the codebase. `requests` is the only third-party dependency (used by `tracker.py`); no requirements file exists yet, so install it manually in the venv if needed.
+There is no build system, test framework, or linter. `main.py` is the runnable entry point and `bencode.py` has a small `__main__` smoke test. `ubuntu.torrent` is a real single-file torrent checked in for manual testing.
 
-Running each module directly executes its ad-hoc test:
+`bittorent/` is a Python 3.14 virtualenv (created via `python3.14 -m venv bittorent`), not source code — ignore it when reading/searching. `requests` is the only third-party dependency (used by `tracker.py`); there is no requirements file, so install it into the venv by hand. Run from the venv: `source bittorent/bin/activate`, then:
 
 ```
-python3 bencode.py    # decodes ubuntu.torrent and prints metadata
-python3 tracker.py    # does a full announce against ubuntu.torrent's tracker and prints peers
+python main.py        # announce, connect to peers, download + verify + write piece 0
+python bencode.py     # decode ubuntu.torrent and print its metadata
 ```
 
-`personal_log.md` is the developer's running notes on issues hit and things to read up on — check it for context on known unresolved problems (e.g. the tracker currently only returns one peer despite `numwant`).
+The output file (named after the torrent, e.g. `ubuntu-*.iso`) is created in the working directory; `*.iso` is gitignored.
 
-## Architecture
+`personal_log.md` holds the developer's own notes; `TODO.md` lists known gaps.
 
-Two modules, connected by the bencode decoder as the shared foundation:
+Live testing is flaky for reasons outside the code: the Ubuntu tracker often returns a single peer (`185.125.190.59`) that completes the handshake but never unchokes, so runs time out. The peer list varies from run to run (sometimes a list with working IPv6 peers). Don't hammer the tracker with rapid re-announces.
 
-### `bencode.py` — bencode codec + torrent file parsing
+## Flow (main.py)
 
-Implements a bencode decoder (the encoding BitTorrent uses for `.torrent` files and tracker/peer wire messages) plus torrent-file-specific parsing on top of it.
+1. Read `ubuntu.torrent`, decode it, compute the info hash (`bencode`).
+2. Announce to the tracker (`tracker`) and parse the peer list.
+3. Open the output file once (`'wb'`, which truncates), then for each peer: handshake → read first message (bitfield) → send INTERESTED → `wait_for_unchoke` → `download_piece(sock, 0, piece_length)` → `check_piece_hash` → if it matches, `write_piece` and `break`. Any exception for a peer is printed with a traceback and the loop moves on to the next peer.
 
-- `decode(data, start)` — dispatches on `data[start]`: `i` → integer, ASCII digit → string, `l` → list, `d` → dict.
-- `decode_int(data, start)` — parses `i<number>e`.
-- `decode_string(data, start)` — parses `<length>:<bytes>`, the byte-string type used throughout bencode.
-- `decode_list(data, start)` / `decode_dict(data, start)` — parse `l<items>e` / `d<kv-pairs>e` recursively via `decode`.
+## Modules
 
-Every decode function takes `(data, start)` and returns `(value, next_start)`, where `next_start` is the index just past the parsed element. This pairing is the core convention of the module — any new decode function must follow it so `decode` can dispatch recursively and callers can keep advancing through a buffer. Decoded dict keys and strings are raw `bytes` (e.g. `decoded[b'announce']`), not `str` — bencode has no native text type.
+### `bencode.py` — bencode codec + torrent parsing
+- `decode(data, start)` dispatches on the first byte (`i`, digit, `l`, `d`). Every decode function takes `(data, start)` and returns `(value, next_start)`; keep this convention. Strings and dict keys are raw `bytes` (e.g. `decoded[b'announce']`).
+- `find_info_range` / `get_info_hash(data)` locate the `info` dict's exact byte range in the raw file and SHA1 it. The hash must come from the original bytes, not a re-encode. `get_info_hash` returns `(info_dict, info_hash)`.
+- `parse_torrent` / `decode_torrent` are helpers; multi-file torrents raise `NotImplementedError`.
+- Info-dict keys used elsewhere: `b'name'`, `b'length'`, `b'piece length'` (with a space), `b'pieces'` (concatenated 20-byte SHA1s, one per piece).
 
-- `decode_torrent(filepath)` — reads a `.torrent` file, decodes it fully, and separately re-locates and re-decodes just the `info` dict (by finding the `4:info` marker in the raw bytes) so its **exact original byte range** can be SHA1-hashed into `info_hash`. This byte-exact re-hash (rather than re-encoding the decoded dict) is required because the info hash must match what peers/trackers expect bit-for-bit.
-- `parse_torrent(filepath)` — calls `decode_torrent` and extracts the fields a client needs (`name`, `piece_length`, `pieces`, `announce`). Handles single-file torrents (`info[b'length']`) vs multi-file torrents (`info[b'files']`), though the multi-file `files` list currently isn't included in the returned dict — that gap is worth checking before relying on it.
+### `tracker.py` — HTTP tracker announce
+- `generate_peer_id()`: Azureus-style `-PC0001-` + random suffix.
+- `build_tracker_url` / `tracker_get`: GET with `compact=1`, `numwant=50`, `event=started`. Returns the raw bencoded body.
+- `parse_peers`: handles the compact format (6 bytes per peer) and the non-compact list of dicts (the tracker sometimes answers with this, including IPv6 addresses). The separate `peers6` key is not read.
 
-### `tracker.py` — HTTP tracker announce protocol
+### `peer.py` — peer wire protocol
+- Message ID constants, `BLOCK_SIZE = 16384`.
+- `recv_exact`, `do_handshake` (checks only the info hash, 10 s socket timeout), `recv_message` (4-byte length prefix; returns `(None, None)` for keep-alives), `send_message`.
+- `wait_for_unchoke(sock)`: loops until UNCHOKE, ignoring other messages.
+- `request_block` sends a REQUEST. `download_block(sock, index, begin, length)` sends it and waits for the PIECE reply, returning the block data. `download_piece(sock, piece_index, length)` loops over a piece's blocks (last block shortened with `min`) into a `bytearray`.
+- Not yet handled in `download_block`: a CHOKE just prints and keeps waiting (the peer drops the request), and the reply's index/begin are parsed but not compared with what was asked.
 
-Talks to a torrent's tracker over HTTP to register the client and get a peer list. Depends on `bencode.decode` to parse the tracker's bencoded response, and independently recomputes the info hash from the raw file (`get_info_hash`) rather than importing torrent-parsing logic from `bencode.py`.
+### `pieces.py` — verify and store
+- `check_piece_hash(piece, index, pieces_hash)`: SHA1 of the bytes vs `pieces_hash[index*20 : index*20+20]`.
+- `write_piece(index, data, piece_length, file)`: `seek(index * piece_length)` then `write`. Offset uses the standard piece length, so out-of-order pieces land correctly. Tested offline with fake pieces; piece 0 has also been verified end to end against a live peer (file SHA1 matched the torrent's piece-0 hash).
 
-- `generate_peer_id()` — builds a 20-byte peer ID (Azureus-style `-PC0001-` prefix + random suffix).
-- `build_tracker_url` / `tracker_get` — construct and issue the GET request against the announce URL with the standard tracker query params (`info_hash`, `peer_id`, `port`, `uploaded`, `downloaded`, `left`, `event`, `numwant`, etc.), and return the raw bencoded response body.
-- `parse_peers(peers_bytes)` — parses the *compact* peer list format: 6 raw bytes per peer (4 bytes IP + 2 bytes big-endian port). Note the request currently sends `compact: 0` (non-compact) while `parse_peers` assumes the compact 6-byte format — if the tracker honors `compact=0` and returns a bencoded peer list instead, this parser will misbehave. Worth reconciling if peer parsing looks wrong.
+## Next steps
+Outer loop over all pieces (last piece is shorter), track which pieces are done, use the peer's bitfield, retry on a bad hash, then CHOKE handling and the reply check, and finally multiple peers in parallel. See `TODO.md`.
+
+## Working style
+This is a learning project. The developer writes the code; Claude guides with hints, syntax and review rather than writing source for them, unless they ask explicitly.
