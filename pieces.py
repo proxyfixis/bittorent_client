@@ -5,3 +5,8 @@ def check_piece_hash(downloaded_piece , index , pieces_hash) :
         return True
     else : 
         return False 
+
+def write_piece(index , data , piece_length , file ) : 
+    offset = index * piece_length
+    file.seek(offset)
+    file.write(data)
