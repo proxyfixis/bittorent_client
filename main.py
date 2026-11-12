@@ -21,13 +21,13 @@ if b'files' in info:
 name = info[b'name']
 
 
-left = info[b'length']
+total_length = info[b'length']
 piece_length = info[b'piece length']
 pieces_hash = info[b'pieces']
 
 
 
-encoded_response = tracker.tracker_get(announce_url, info_hash, peer_id, 6881 , left) ## port no is standard convention for bittorent
+encoded_response = tracker.tracker_get(announce_url, info_hash, peer_id, 6881 , total_length) ## port no is standard convention for bittorent
 
 decoded_response , _ = bencode.decode(encoded_response , 0)
 print(decoded_response)
@@ -38,6 +38,9 @@ if b'failure reason' in decoded_response :
 
 
 peers = tracker.parse_peers(decoded_response[b'peers'])
+piece_count = len(pieces_hash) // 20
+completed = set()
+print(f"Total no of pieces : {piece_count}")
 
 with open(name ,'wb') as file : 
     ## connects to peers in swarms and requests peices 
@@ -68,19 +71,32 @@ with open(name ,'wb') as file :
                 ## waits till unchoked
                 peer.wait_for_unchoke(sock)
 
-                print("downloading piece 0")
-                ## requesting first piece to test
-                test_piece = peer.download_piece(sock, 0, piece_length)
-                print(len(test_piece))
+                for index in range(piece_count):
+                    if index in completed  : 
+                        continue 
 
-                piece_is_correct = pieces.check_piece_hash(test_piece , 0 , pieces_hash)
-                print(f"Piece x hash : {piece_is_correct}")
-                
-                if(piece_is_correct) : 
-                    ## write to file 
-                    pieces.write_piece(0 , test_piece , piece_length , file)
-                    break
-                    
+                    ## calculate length of current piece to request
+                    current_piece_length = pieces.get_piece_length(index , piece_length , total_length )
+
+                    ## download piece
+                    downloaded_piece = peer.download_piece(sock, index, current_piece_length)
+                    print(len(downloaded_piece))
+
+                    ## verify hash
+                    piece_is_correct = pieces.check_piece_hash(downloaded_piece , index , pieces_hash)
+                    print(f"Piece {index} hash : {piece_is_correct}")
+
+                    ## if hash if same -> write to file 
+                    if(piece_is_correct) : 
+                        ## write to file 
+                        pieces.write_piece(index , downloaded_piece , piece_length , file)
+                        completed.add(index)
+                        print(f"Completed {len(completed)} out of {piece_count}")
+                    else : 
+                        print(f"bad piece : {index}")
+
+            if len(completed) == piece_count : 
+                break 
 
         except Exception as e:
             print(f"peer {ip}:{port} failed: {e}")

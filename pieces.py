@@ -10,3 +10,17 @@ def write_piece(index , data , piece_length , file ) :
     offset = index * piece_length
     file.seek(offset)
     file.write(data)
+
+def get_piece_length(index, piece_length, total_length):
+    return min(piece_length , total_length- index * piece_length )
+
+def has_piece(bitfield, index):
+    byte_index = index // 8
+    bit_position = index % 8
+
+    if byte_index >= len(bitfield):
+        return False
+
+    return ((bitfield[byte_index] >> (7 - bit_position)) & 1) == 1
+    
+    
