@@ -53,8 +53,9 @@ with open(name ,'wb') as file :
             ## with sock so socket cleanup is automatic
             print("waiting for first message")
             with sock : 
+                bitfield = b'' ## set default bitfield 
                 message_id , payload  = peer.recv_message(sock)
-
+                
                 if(message_id == None) : 
                     print("Recieved a keep alive")
                 elif(message_id == peer.BITFIELD) :
@@ -74,6 +75,8 @@ with open(name ,'wb') as file :
                 for index in range(piece_count):
                     if index in completed  : 
                         continue 
+                    elif pieces.has_piece(bitfield , index) == False  : 
+                        continue
 
                     ## calculate length of current piece to request
                     current_piece_length = pieces.get_piece_length(index , piece_length , total_length )
