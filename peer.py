@@ -99,7 +99,10 @@ def download_block(sock ,index , begin , length) :
             break
             
         elif message_id == CHOKE : 
-            print(f"Recieved message : {message_id}")
+            print(f"You got choked , you are waiting")
+            wait_for_unchoke(sock)
+            request_block(sock , index , begin , length)
+
 
     resp_index = int.from_bytes(response[0:4] , byteorder = "big")
     resp_begin = int.from_bytes(response[4:8] , byteorder= "big")
