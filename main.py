@@ -1,7 +1,8 @@
 import peer , bencode , tracker , pieces
 import traceback
+import config
 
-filepath = 'ubuntu.torrent'
+filepath = config.TORRENT_PATH
 
 with open(filepath , 'rb') as file :
     data = file.read()
@@ -27,7 +28,7 @@ pieces_hash = info[b'pieces']
 
 
 
-encoded_response = tracker.tracker_get(announce_url, info_hash, peer_id, 6881 , total_length) ## port no is standard convention for bittorent
+encoded_response = tracker.tracker_get(announce_url, info_hash, peer_id, config.PORT , total_length) ## port no is standard convention for bittorent
 
 decoded_response , _ = bencode.decode(encoded_response , 0)
 print(decoded_response)

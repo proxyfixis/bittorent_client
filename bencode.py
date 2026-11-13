@@ -1,7 +1,8 @@
 from pathlib import Path
 import hashlib
+import config
 
-testpath = "ubuntu.torrent"
+testpath = config.TORRENT_PATH
 
 ## decoding for each type
 def decode_int(data,start) : 
@@ -103,7 +104,7 @@ def get_info_hash(data):
 
 if __name__ == '__main__':
     ## testing , remove later    
-    torrent = parse_torrent('ubuntu.torrent')
+    torrent = parse_torrent(testpath)
     print('Name:', torrent['name'])
     print('Announce:', torrent['announce'])
     print('Piece length:', torrent['piece_length'])
