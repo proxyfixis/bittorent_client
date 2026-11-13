@@ -96,7 +96,15 @@ def download_block(sock ,index , begin , length) :
         message_id , response = recv_message(sock) 
 
         if message_id == PIECE : 
-            break
+
+            resp_index = int.from_bytes(response[0:4] , byteorder = "big")
+            resp_begin = int.from_bytes(response[4:8] , byteorder= "big")
+
+            if(resp_index == index and resp_begin == begin) : 
+                break
+
+            else : 
+                print(f"mismatch: asked piece {index} offset {begin}, got piece {resp_index} offset {resp_begin}")
             
         elif message_id == CHOKE : 
             print(f"You got choked , you are waiting")
@@ -104,8 +112,7 @@ def download_block(sock ,index , begin , length) :
             request_block(sock , index , begin , length)
 
 
-    resp_index = int.from_bytes(response[0:4] , byteorder = "big")
-    resp_begin = int.from_bytes(response[4:8] , byteorder= "big")
+    
     resp_block = response[8:]
 
     print(f"got block: piece {resp_index}, offset {resp_begin}, {len(resp_block)} bytes")
