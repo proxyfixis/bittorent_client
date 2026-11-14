@@ -12,6 +12,7 @@ PIECE = 7
 CANCEL = 8
 
 BLOCK_SIZE = 16384
+PROTOCOL_HEADER = b'\x13' + b'BitTorrent protocol'
 
 
 ## ensuring we recieve the required number of bytes - handshake is 68 bytes exactly
@@ -25,10 +26,9 @@ def recv_exact(sock , n) :
     return buffer
 
 ## handshake with peer
-
 def do_handshake(ip , port , info_hash , peer_id) :
 
-    handshake_bytes = b'\x13' +  b'BitTorrent protocol' + b'\x00'*8+ info_hash + peer_id
+    handshake_bytes = PROTOCOL_HEADER + b'\x00'*8+ info_hash + peer_id
 
     ## decide ipv4 or ipv6
     family = socket.AF_INET6 if ':' in ip else socket.AF_INET
@@ -42,6 +42,8 @@ def do_handshake(ip , port , info_hash , peer_id) :
 
         response = recv_exact(sock , 68)
 
+        if response[0:20] != PROTOCOL_HEADER :
+            raise RuntimeError("Peer did not reply with a BitTorrent handshake")
         ##check if info hash matches
         if(response[28:48] != info_hash) :
             raise RuntimeError("Info hash doesn't match")
@@ -73,17 +75,26 @@ def send_message(sock , message_id , payload = b'') :
     sock.sendall(message)
 
 ## peers might choke you for wtv reason , when choked run this to keep waiting for the unchoke
-def wait_for_unchoke(sock) : 
-    while True :    
-        message_id , _ = recv_message(sock)
+def wait_for_unchoke(sock, piece_count):
+    bitfield = bytearray((piece_count + 7) // 8)   # all zeros: peer has nothing yet
 
-        if message_id == UNCHOKE : 
-            print("Unchoke recieved , ready to request pieces")
-            return
-        elif message_id is None :
+    while True:
+        message_id, payload = recv_message(sock)
+
+        if message_id is None:                      # keep-alive
             continue
-        else :
-            print(f"waiting for unchoke, got message id {message_id}") 
+        elif message_id == BITFIELD:
+            bitfield = bytearray(payload)
+        elif message_id == HAVE:
+            index = int.from_bytes(payload[0:4], byteorder="big")
+            byte_index = index // 8
+            if byte_index < len(bitfield):
+                bitfield[byte_index] |= 1 << (7 - index % 8)
+        elif message_id == UNCHOKE:
+            print("Unchoke received, ready to request pieces")
+            return bitfield
+        else:
+            print(f"waiting for unchoke, got message id {message_id}")
 
 ## downlaods a block - loop over all blocks in download_piece
 def download_block(sock ,index , begin , length) : 
@@ -125,7 +136,12 @@ def download_piece(sock, piece_index , length) :
     for begin in range(0 , length , BLOCK_SIZE) : 
         bytes_left = length - begin 
         block_len = min(bytes_left , BLOCK_SIZE)
-        buf[begin : begin + block_len] = download_block(sock , piece_index , begin , block_len)
+        downloaded_block = download_block(sock , piece_index , begin , block_len)
+        if len(downloaded_block) != block_len : 
+            raise ValueError(f"downloaded block's length : {len(downloaded_block)} does not match with requested block length : {block_len}")
+        else : 
+            buf[begin : begin + block_len] = downloaded_block
+            
 
     return buf
 

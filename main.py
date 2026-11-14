@@ -52,26 +52,15 @@ with open(name ,'wb') as file :
             print(f"handshake succeeded with {ip}:{port}")
 
             ## with sock so socket cleanup is automatic
-            print("waiting for first message")
             with sock : 
-                bitfield = b'' ## set default bitfield 
-                message_id , payload  = peer.recv_message(sock)
                 
-                if(message_id == None) : 
-                    print("Recieved a keep alive")
-                elif(message_id == peer.BITFIELD) :
-                    print(f"Message ID :{message_id}  Payload length : {len(payload)}" )
-                    bitfield = payload
-                else : 
-                    print("not bitfield , handle later on")
-
                 print("sending INTERESTED")
                 ## send interested
                 peer.send_message(sock , peer.INTERESTED)
 
                 print("waiting for unchoke")
                 ## waits till unchoked
-                peer.wait_for_unchoke(sock)
+                bitfield = peer.wait_for_unchoke(sock, piece_count)
 
                 for index in range(piece_count):
                     if index in completed  : 
