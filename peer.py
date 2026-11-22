@@ -119,7 +119,7 @@ def download_block(sock ,index , begin , length) :
             
         elif message_id == CHOKE : 
             print(f"You got choked , you are waiting")
-            wait_for_unchoke(sock)
+            wait_for_unchoke(sock, 0)
             request_block(sock , index , begin , length)
 
 
