@@ -36,7 +36,7 @@ stalled = 0
 STALL_LIMIT = 3
 print(f"Total no of pieces : {piece_count}")
 
-mode = 'r+b' if os.path.exists(name) else 'wb'
+mode = 'r+b' if os.path.exists(name) else 'w+b'
 
 with open(name , mode) as file : 
     completed = pieces.find_completed(file, piece_count, piece_length, total_length, pieces_hash)
