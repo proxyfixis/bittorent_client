@@ -15,6 +15,7 @@ CANCEL = 8
 BLOCK_SIZE = 16384
 UNCHOKE_TIMEOUT = 60    # seconds to wait for UNCHOKE
 BLOCK_TIMEOUT = 30      # seconds to wait for one block
+PIPELINE_DEPTH = 5      # requests allowed in flight at once
 PROTOCOL_HEADER = b'\x13' + b'BitTorrent protocol'
 
 
@@ -147,21 +148,54 @@ def download_block(sock ,index , begin , length) :
     print(f"got block: piece {resp_index}, offset {resp_begin}, {len(resp_block)} bytes")
     return resp_block
 
-## downloads a piece block by block - loop over in main to download all pieces
+
+## downloads a piece with several block requests in flight at once
 def download_piece(sock, piece_index , length) : 
     buf = bytearray(length)
+    waiting = set()          # begins we asked for and have no reply yet
+    next_begin = 0           # next block we have not asked for yet
+    deadline = time.monotonic() + BLOCK_TIMEOUT ## set deadline time
 
-    for begin in range(0 , length , BLOCK_SIZE) : 
-        bytes_left = length - begin 
-        block_len = min(bytes_left , BLOCK_SIZE)
-        downloaded_block = download_block(sock , piece_index , begin , block_len)
-        if len(downloaded_block) != block_len : 
-            raise ValueError(f"downloaded block's length : {len(downloaded_block)} does not match with requested block length : {block_len}")
-        else : 
-            buf[begin : begin + block_len] = downloaded_block
-            
+    while True :
+        ## when waiting set has blocks in it we haven't pushed all the blocks to waiting yet - keeps the window full
+        while len(waiting) < PIPELINE_DEPTH and next_begin < length :
+            block_len = min(BLOCK_SIZE , length - next_begin)
+            request_block(sock , piece_index , next_begin , block_len) ## request and add to waiting , update next begin
+            waiting.add(next_begin)
+            next_begin += BLOCK_SIZE
 
-    return buf
+        ## nothing in flight and nothing left to send: the piece is complete
+        if not waiting :
+            return buf
+
+        ## if deadline over raise error
+        if time.monotonic() > deadline :
+            raise TimeoutError(f"no block of piece {piece_index} received within {BLOCK_TIMEOUT}s")
+
+        message_id , payload = recv_message(sock)
+        
+        if message_id == PIECE :
+            resp_index = int.from_bytes(payload[0:4] , byteorder = "big")
+            resp_begin = int.from_bytes(payload[4:8] , byteorder = "big")
+            data = payload[8:]
+
+            if resp_index == piece_index and resp_begin in waiting :
+                expected_len = min(BLOCK_SIZE , length - resp_begin)
+                if len(data) != expected_len :
+                    raise ValueError(f"block length {len(data)} does not match requested length {expected_len}")
+
+                buf[resp_begin : resp_begin + expected_len] = data
+                waiting.discard(resp_begin)
+                deadline = time.monotonic() + BLOCK_TIMEOUT
+            else :
+                print(f"ignoring block: piece {resp_index} offset {resp_begin} (not requested)")
+
+        elif message_id == CHOKE :
+            print("You got choked , you are waiting")
+            wait_for_unchoke(sock , 0)
+            for begin in sorted(waiting) :
+                request_block(sock , piece_index , begin , min(BLOCK_SIZE , length - begin))
+            deadline = time.monotonic() + BLOCK_TIMEOUT
 
 ## request a specific block of the file
 def request_block(sock , piece_index , begin , length) : 
