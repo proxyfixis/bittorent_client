@@ -103,6 +103,11 @@ with open(name , mode) as file :
             stalled = 0
 
         print(f"Round done: {len(completed)}/{piece_count} pieces, stalled {stalled}/{STALL_LIMIT}")
+
+        if stalled >= STALL_LIMIT :
+            print(f"no progress for {STALL_LIMIT} rounds, giving up")
+            break
+
         time.sleep(30)
 
         try :
