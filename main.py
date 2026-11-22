@@ -30,7 +30,7 @@ total_length = info[b'length']
 piece_length = info[b'piece length']
 pieces_hash = info[b'pieces']
 
-peers = tracker.get_peers(announce_url, info_hash, peer_id, config.PORT, total_length)
+peers = tracker.get_peers(announce_url, info_hash, peer_id, config.PORT, total_length, event='started')
 piece_count = len(pieces_hash) // 20
 stalled = 0
 STALL_LIMIT = 3

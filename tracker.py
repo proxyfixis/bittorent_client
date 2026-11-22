@@ -15,16 +15,17 @@ def generate_peer_id():
     return ('-PC0001-' + rand_part).encode()
 
 
-def build_tracker_url(announce_url, info_hash, peer_id, port, left):
+def build_tracker_url(announce_url, info_hash, peer_id, port, left, event=None):
     params = {
         'port': port,
         'uploaded': 0,
         'downloaded': 0,
         'left': left,
         'compact': 1,
-        'event': 'started',
         'numwant' : 50
     }
+    if event :
+        params['event'] = event
     query = urllib.parse.urlencode(params)
     query += '&info_hash=' + urllib.parse.quote_from_bytes(info_hash)
     query += '&peer_id=' + urllib.parse.quote_from_bytes(peer_id)
@@ -32,15 +33,15 @@ def build_tracker_url(announce_url, info_hash, peer_id, port, left):
     return announce_url + '?' + query
 
 
-def tracker_get(announce_url, info_hash, peer_id, port, left):
-    url = build_tracker_url(announce_url, info_hash, peer_id, port, left)
+def tracker_get(announce_url, info_hash, peer_id, port, left, event=None):
+    url = build_tracker_url(announce_url, info_hash, peer_id, port, left, event)
     response = requests.get(url, timeout=10, headers={'User-Agent': 'PyTorrentClient/0.1'})
     if response.status_code != 200:
         raise RuntimeError(f'Tracker returned {response.status_code}: {response.content[:200]}')
     return response.content
 
-def get_peers(announce_url, info_hash, peer_id, port, left):
-    encoded_response = tracker_get(announce_url, info_hash, peer_id, port, left)
+def get_peers(announce_url, info_hash, peer_id, port, left, event=None):
+    encoded_response = tracker_get(announce_url, info_hash, peer_id, port, left, event)
     decoded_response, _ = decode(encoded_response, 0)
 
     if b'failure reason' in decoded_response:
