@@ -32,12 +32,15 @@ pieces_hash = info[b'pieces']
 
 peers = tracker.get_peers(announce_url, info_hash, peer_id, config.PORT, total_length)
 piece_count = len(pieces_hash) // 20
-completed = set()
 stalled = 0
 STALL_LIMIT = 3
 print(f"Total no of pieces : {piece_count}")
 
-with open(name ,'wb') as file : 
+mode = 'r+b' if os.path.exists(name) else 'wb'
+
+with open(name , mode) as file : 
+    completed = pieces.find_completed(file, piece_count, piece_length, total_length, pieces_hash)
+    print(f"Resuming: {len(completed)} of {piece_count} pieces already on disk")
     ## connects to peers in swarms and requests peices 
     while len(completed) < piece_count and stalled < STALL_LIMIT :
         before = len(completed)

@@ -22,5 +22,16 @@ def has_piece(bitfield, index):
         return False
 
     return ((bitfield[byte_index] >> (7 - bit_position)) & 1) == 1
+
+def find_completed(file, piece_count, piece_length, total_length, pieces_hash):
+    done = set()
+    for index in range(piece_count):
+        length = get_piece_length(index, piece_length, total_length)
+        file.seek(index * piece_length)
+        data = file.read(length)
+
+        if len(data) == length and check_piece_hash(data, index, pieces_hash):
+            done.add(index)
+    return done
     
     
