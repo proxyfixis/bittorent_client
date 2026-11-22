@@ -1,5 +1,6 @@
 
 import socket
+import time
 
 CHOKE = 0
 UNCHOKE = 1
@@ -12,6 +13,8 @@ PIECE = 7
 CANCEL = 8
 
 BLOCK_SIZE = 16384
+UNCHOKE_TIMEOUT = 60    # seconds to wait for UNCHOKE
+BLOCK_TIMEOUT = 30      # seconds to wait for one block
 PROTOCOL_HEADER = b'\x13' + b'BitTorrent protocol'
 
 
@@ -78,32 +81,46 @@ def send_message(sock , message_id , payload = b'') :
 def wait_for_unchoke(sock, piece_count):
     bitfield = bytearray((piece_count + 7) // 8)   # all zeros: peer has nothing yet
 
-    while True:
-        message_id, payload = recv_message(sock)
+    old_timeout = sock.gettimeout()                 # remember the normal 10s timeout
+    sock.settimeout(UNCHOKE_TIMEOUT)                # a silent peer may stay quiet longer
+    deadline = time.monotonic() + UNCHOKE_TIMEOUT   # hard stop, even if keep-alives arrive
 
-        if message_id is None:                      # keep-alive
-            continue
-        elif message_id == BITFIELD:
-            bitfield = bytearray(payload)
-        elif message_id == HAVE:
-            index = int.from_bytes(payload[0:4], byteorder="big")
-            byte_index = index // 8
-            if byte_index < len(bitfield):
-                bitfield[byte_index] |= 1 << (7 - index % 8)
-        elif message_id == UNCHOKE:
-            print("Unchoke received, ready to request pieces")
-            return bitfield
-        else:
-            print(f"waiting for unchoke, got message id {message_id}")
+    try:
+        while True:
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"no UNCHOKE within {UNCHOKE_TIMEOUT}s")
+
+            message_id, payload = recv_message(sock)
+
+            if message_id is None:                  # keep-alive
+                continue
+            elif message_id == BITFIELD:
+                bitfield = bytearray(payload)
+            elif message_id == HAVE:
+                index = int.from_bytes(payload[0:4], byteorder="big")
+                byte_index = index // 8
+                if byte_index < len(bitfield):
+                    bitfield[byte_index] |= 1 << (7 - index % 8)
+            elif message_id == UNCHOKE:
+                print("Unchoke received, ready to request pieces")
+                return bitfield
+            else:
+                print(f"waiting for unchoke, got message id {message_id}")
+    finally:
+        sock.settimeout(old_timeout)                # put the 10s timeout back
 
 ## downlaods a block - loop over all blocks in download_piece
 def download_block(sock ,index , begin , length) : 
 
     print(f"requesting block begin={begin}")
     request_block(sock , index , begin , length)
+    deadline = time.monotonic() + BLOCK_TIMEOUT
 
     ## waits till piece arrives 
     while True : 
+        if time.monotonic() > deadline :
+            raise TimeoutError(f"block {begin} of piece {index} not received within {BLOCK_TIMEOUT}s")
+
         message_id , response = recv_message(sock) 
 
         if message_id == PIECE : 
@@ -121,6 +138,7 @@ def download_block(sock ,index , begin , length) :
             print(f"You got choked , you are waiting")
             wait_for_unchoke(sock, 0)
             request_block(sock , index , begin , length)
+            deadline = time.monotonic() + BLOCK_TIMEOUT
 
 
     
