@@ -1,5 +1,5 @@
 import peer , bencode , tracker , pieces
-import traceback , time
+import traceback , time , os
 import config
 
 filepath = config.TORRENT_PATH
@@ -19,7 +19,11 @@ peer_id =tracker.generate_peer_id()
 if b'files' in info:
     raise NotImplementedError("multi-file torrents are not supported yet")
 
-name = info[b'name']
+raw_name = info[b'name']
+name = os.path.basename(raw_name.decode(errors='replace'))   # keep only the last part of the path
+
+if name in ('', '.', '..'):
+    raise ValueError(f"unsafe file name in torrent: {raw_name!r}")
 
 
 total_length = info[b'length']
