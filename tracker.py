@@ -39,6 +39,17 @@ def tracker_get(announce_url, info_hash, peer_id, port, left):
         raise RuntimeError(f'Tracker returned {response.status_code}: {response.content[:200]}')
     return response.content
 
+def get_peers(announce_url, info_hash, peer_id, port, left):
+    encoded_response = tracker_get(announce_url, info_hash, peer_id, port, left)
+    decoded_response, _ = decode(encoded_response, 0)
+
+    if b'failure reason' in decoded_response:
+        error = decoded_response[b'failure reason'].decode(errors='replace')
+        raise RuntimeError(f"Tracker failure: {error}")
+
+    return parse_peers(decoded_response[b'peers'])
+
+
 def parse_peers(peers_data):
     peers = []
 
